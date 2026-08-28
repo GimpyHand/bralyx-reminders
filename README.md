@@ -20,6 +20,16 @@ omarchy bar move due.reminders --section right
 
 `omarchy plugin add` is what enables the plugin. `install.sh` only installs the helper binary. It does not edit `shell.json`.
 
+## Dependencies
+
+Stock Omarchy already provides these:
+
+- `systemd` user session (`systemctl --user`, `systemd-run`)
+- `jq` (JSON output from `reminderctl list`)
+- `omarchy-notification-send` and `omarchy-shell` (fired reminders open the manager popup)
+
+No `sudo`, `pkexec`, extra packages, or network access.
+
 ## Usage
 
 Click the bell pill to open the manager from the bar. Right-click the pill to refresh the count. Click a fired notification to open the same popup.

@@ -86,6 +86,10 @@ BarWidget {
     target: "due.reminders.widget"
     function refresh(): void { root.broadcast("refresh") }
     function open(): void { root.open() }
+    function close(): void { root.close() }
+    function show(): void { root.open() }
+    function hide(): void { root.close() }
+    function toggle(): void { root.togglePanel() }
   }
 
   Process {
