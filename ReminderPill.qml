@@ -12,8 +12,7 @@ BarWidget {
   property int reminderCount: 0
   property string tooltip: "No reminders"
 
-  readonly property string label: reminderCount > 0 ? String(reminderCount) : ""
-  readonly property var verticalLines: ["󰢌", label]
+  readonly property string countLabel: reminderCount > 99 ? "99+" : String(reminderCount)
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
   readonly property bool popoutSwitchClosing: panelLoader.item ? panelLoader.item.popoutSwitchClosing === true : false
   readonly property real openPanelIndicatorWidth: button.implicitWidth
@@ -120,60 +119,40 @@ BarWidget {
     root.tooltip = lines.join("\n")
   }
 
-  WidgetButton {
+  BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.vertical ? "" : root.label
-    labelVisible: !root.vertical
-    hasVisualContent: root.vertical ? root.verticalLines.length > 0 : true
-    fixedHeight: root.vertical ? root.verticalLines.length * Style.bar.iconSlot : -1
-    horizontalMargin: 8.75
-    verticalPadding: 8.75
     active: root.reminderCount > 0
+    slotSize: Style.bar.statusSlot
     tooltipText: root.tooltip
+    iconComponent: Component {
+      Item {
+        anchors.fill: parent
+
+        Row {
+          anchors.centerIn: parent
+          spacing: Style.space(2)
+
+          ReminderBellIcon {
+            iconSize: Math.round(Style.bar.iconCanvas * 0.82)
+            color: button.active ? button.activeColor : button.foreground
+          }
+
+          Text {
+            visible: root.reminderCount > 0
+            text: root.countLabel
+            color: button.active ? button.activeColor : button.foreground
+            font.family: button.fontFamily
+            font.pixelSize: Style.font.caption
+            verticalAlignment: Text.AlignVCenter
+          }
+        }
+      }
+    }
     onPressed: function(b) {
       if (b === Qt.RightButton) root.refresh()
       else root.togglePanel()
-    }
-
-    Row {
-      visible: !root.vertical
-      anchors.centerIn: parent
-      spacing: Style.space(2)
-
-      OpticalGlyph {
-        text: "󰢌"
-        fontFamily: button.fontFamily
-        fontSize: button.fontSize
-        color: button.active ? button.activeColor : button.foreground
-      }
-
-      Text {
-        visible: root.reminderCount > 0
-        text: root.label
-        color: button.active ? button.activeColor : button.foreground
-        font.family: button.fontFamily
-        font.pixelSize: Style.font.caption
-        verticalAlignment: Text.AlignVCenter
-      }
-    }
-
-    Column {
-      visible: root.vertical
-      anchors.fill: parent
-      Repeater {
-        model: root.verticalLines
-        OpticalGlyph {
-          required property string modelData
-          width: button.width
-          height: Style.bar.iconSlot
-          text: modelData
-          fontFamily: button.fontFamily
-          fontSize: modelData.length > 2 ? button.fontSize * 0.85 : button.fontSize
-          color: button.active ? button.activeColor : button.foreground
-        }
-      }
     }
 
     Accessible.role: Accessible.Button
