@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "bralyx.reminders",
   "name": "Due",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "author": "Bralyx",
   "license": "MIT",
   "description": "Create, list, snooze, edit, and delete desktop notification reminders from a bar pill.",

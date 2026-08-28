@@ -12,7 +12,6 @@ BarWidget {
   property int reminderCount: 0
   property string tooltip: "No reminders"
 
-  readonly property string countLabel: reminderCount > 99 ? "99+" : String(reminderCount)
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
   readonly property bool popoutSwitchClosing: panelLoader.item ? panelLoader.item.popoutSwitchClosing === true : false
   readonly property real openPanelIndicatorWidth: button.implicitWidth
@@ -123,33 +122,10 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
+    text: "󰢌"
     active: root.reminderCount > 0
     slotSize: Style.bar.statusSlot
     tooltipText: root.tooltip
-    iconComponent: Component {
-      Item {
-        anchors.fill: parent
-
-        Row {
-          anchors.centerIn: parent
-          spacing: Style.space(2)
-
-          ReminderBellIcon {
-            iconSize: Math.round(Style.bar.iconCanvas * 0.82)
-            color: button.active ? button.activeColor : button.foreground
-          }
-
-          Text {
-            visible: root.reminderCount > 0
-            text: root.countLabel
-            color: button.active ? button.activeColor : button.foreground
-            font.family: button.fontFamily
-            font.pixelSize: Style.font.caption
-            verticalAlignment: Text.AlignVCenter
-          }
-        }
-      }
-    }
     onPressed: function(b) {
       if (b === Qt.RightButton) root.refresh()
       else root.togglePanel()
