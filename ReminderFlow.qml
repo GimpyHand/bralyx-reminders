@@ -7,8 +7,8 @@ import "ReminderFlowModel.js" as ReminderFlowModel
 
 Panel {
   id: root
-  moduleName: "due.reminders"
-  ipcTarget: "due.reminders"
+  moduleName: "bralyx.reminders"
+  ipcTarget: "bralyx.reminders"
   manageIpc: false
 
   property var anchorItem: null

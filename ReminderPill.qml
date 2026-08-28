@@ -7,7 +7,7 @@ import "ReminderFlowModel.js" as ReminderFlowModel
 
 BarWidget {
   id: root
-  moduleName: "due.reminders"
+  moduleName: "bralyx.reminders"
 
   property int reminderCount: 0
   property string tooltip: "No reminders"
@@ -83,7 +83,7 @@ BarWidget {
   }
 
   IpcHandler {
-    target: "due.reminders.widget"
+    target: "bralyx.reminders.widget"
     function refresh(): void { root.broadcast("refresh") }
     function open(): void { root.open() }
     function close(): void { root.close() }
