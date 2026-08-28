@@ -3,7 +3,7 @@
   "id": "due.reminders",
   "name": "Due",
   "version": "1.1.0",
-  "author": "Contributors",
+  "author": "GimpyHand",
   "license": "MIT",
   "description": "Create, list, snooze, edit, and delete desktop notification reminders from a bar pill.",
   "kinds": [
@@ -15,7 +15,7 @@
   "barWidget": {
     "displayName": "Due",
     "description": "Bell pill with the active reminder count. Opens a manager to create, cancel, snooze, or edit reminders.",
-    "category": "Info",
+    "category": "Productivity",
     "aliases": [
       "reminder",
       "reminders",
