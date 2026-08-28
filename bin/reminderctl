@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# reminderctl — manage Omarchy reminders for the due.reminders plugin.
+# reminderctl — manage Omarchy reminders for the bralyx.reminders plugin.
 #
 # Reminders live as one-shot systemd user timers named
 #   omarchy-reminder-<minutes>m-<unix-ts>.timer
@@ -16,7 +16,7 @@
 #   reminderctl clear                      stop + forget all reminders
 set -euo pipefail
 
-PLUGIN_ID="due.reminders"
+PLUGIN_ID="bralyx.reminders"
 REMINDER_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/omarchy-reminders"
 GLYPH="󰢌"
 MAX_MINUTES=999999

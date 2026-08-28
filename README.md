@@ -2,7 +2,7 @@
 
 A bar pill and popup for the [Omarchy](https://omarchy.org) Quattro shell. Create, list, snooze, edit, and delete desktop notification reminders. State lives in systemd user timers (no daemon, no network).
 
-Plugin id: `due.reminders`. Disable the built-in `omarchy.reminders` overlay while this is enabled so you do not get two reminder UIs:
+Plugin id: `bralyx.reminders`. Disable the built-in `omarchy.reminders` overlay while this is enabled so you do not get two reminder UIs:
 
 ```sh
 omarchy plugin disable omarchy.reminders
@@ -11,9 +11,9 @@ omarchy plugin disable omarchy.reminders
 ## Install
 
 ```sh
-omarchy plugin add https://github.com/GimpyHand/due-reminders.git --enable
-~/.config/omarchy/plugins/due.reminders/install.sh
-omarchy bar move due.reminders --section right
+omarchy plugin add https://github.com/GimpyHand/bralyx-reminders.git --enable
+~/.config/omarchy/plugins/bralyx.reminders/install.sh
+omarchy bar move bralyx.reminders --section right
 ```
 
 `install.sh` copies `bin/reminderctl` to `~/.local/bin/reminderctl` and `chmod +x`. Re-running it is safe. The pill and popup call `reminderctl` from `PATH`, so `~/.local/bin` must be on your `PATH` (it is on a default Omarchy user session).
@@ -56,13 +56,13 @@ reminderctl edit <unit> 20 "new message"
 ## Configure
 
 ```sh
-omarchy bar move due.reminders --section right
+omarchy bar move bralyx.reminders --section right
 ```
 
 ## Remove
 
 ```sh
-omarchy plugin remove due.reminders
+omarchy plugin remove bralyx.reminders
 rm -f ~/.local/bin/reminderctl
 ```
 

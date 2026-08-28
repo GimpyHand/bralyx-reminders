@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "id": "due.reminders",
+  "id": "bralyx.reminders",
   "name": "Due",
   "version": "1.1.0",
-  "author": "GimpyHand",
+  "author": "Bralyx",
   "license": "MIT",
   "description": "Create, list, snooze, edit, and delete desktop notification reminders from a bar pill.",
   "kinds": [
@@ -20,7 +20,7 @@
       "reminder",
       "reminders",
       "alarm",
-      "due"
+      "bralyx"
     ],
     "allowMultiple": false,
     "defaultSection": "right"
