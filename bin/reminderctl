@@ -1,0 +1,256 @@
+#!/usr/bin/env bash
+# reminderctl — manage Omarchy reminders for the due.reminders plugin.
+#
+# Reminders live as one-shot systemd user timers named
+#   omarchy-reminder-<minutes>m-<unix-ts>.timer
+# plus a sibling .message file in $XDG_RUNTIME_DIR/omarchy-reminders/.
+# This helper owns reading that state and performing mutations so the QML
+# stays a thin UI layer.
+#
+# Commands:
+#   reminderctl list                       JSON of active reminders
+#   reminderctl set <minutes> [message]    create a reminder
+#   reminderctl cancel <unit>              stop + forget one reminder
+#   reminderctl snooze <unit> <minutes>    re-arm a reminder N minutes from now
+#   reminderctl edit <unit> <minutes> [message]
+#   reminderctl clear                      stop + forget all reminders
+set -euo pipefail
+
+PLUGIN_ID="due.reminders"
+REMINDER_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/omarchy-reminders"
+GLYPH="󰢌"
+MAX_MINUTES=999999
+
+_self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
+MAX_MESSAGE=500
+
+require_minutes() {
+  local minutes=${1:-}
+  if [[ ! $minutes =~ ^[1-9][0-9]{0,6}$ ]] || ((10#$minutes > MAX_MINUTES)); then
+    echo "invalid minutes" >&2
+    exit 1
+  fi
+}
+
+require_unit() {
+  local unit=${1:-}
+  if [[ ! $unit =~ ^omarchy-reminder-[0-9]+m-[0-9]+$ ]]; then
+    echo "invalid unit" >&2
+    exit 1
+  fi
+}
+
+require_fire_at() {
+  local fire_at=${1:-}
+  if [[ ! $fire_at =~ ^[0-9]{1,16}$ ]]; then
+    echo "invalid fire_at" >&2
+    exit 1
+  fi
+}
+
+safe_headline() {
+  local text=${1:-}
+  if [[ $text == -* ]]; then
+    printf 'Reminder: %s' "$text"
+  else
+    printf '%s' "$text"
+  fi
+}
+
+format_remaining() {
+  local seconds=$1
+  local minutes=$((seconds / 60))
+  local remainder=$((seconds % 60))
+  if ((minutes > 0 && remainder > 0)); then
+    echo "${minutes}m ${remainder}s"
+  elif ((minutes > 0)); then
+    echo "${minutes}m"
+  else
+    echo "${remainder}s"
+  fi
+}
+
+_active_timers() {
+  local now=${1:-$(date +%s)}
+  local timer next
+  while IFS=$'\t' read -r timer next; do
+    [[ -z $timer || -z $next ]] && continue
+    next=$((next / 1000000))
+    ((next <= now)) && continue
+    printf "%s\t%s\n" "$timer" "$next"
+  done < <(systemctl --user list-timers --all --output=json "omarchy-reminder-*.timer" 2>/dev/null | jq -r '.[] | [.unit, .next] | @tsv')
+}
+
+message_for() {
+  local unit=$1
+  require_unit "$unit"
+  local path="$REMINDER_DIR/$unit.message"
+  [[ -f $path ]] && cat "$path" || true
+}
+
+parse_unit_minutes() {
+  local unit=$1
+  local minutes=${unit#omarchy-reminder-}
+  minutes=${minutes%%m-*}
+  [[ $minutes =~ ^[0-9]+$ ]] && echo "$minutes" || echo "0"
+}
+
+refresh_indicator() {
+  omarchy-shell -q omarchy.indicators refresh >/dev/null 2>&1 || true
+  omarchy-shell -q "${PLUGIN_ID}.widget" refresh >/dev/null 2>&1 || true
+}
+
+cmd_list() {
+  local now=$(date +%s) timer next remaining unit minutes message
+  local item items="[]"
+  while IFS=$'\t' read -r timer next; do
+    [[ -z $timer || -z $next ]] && continue
+    remaining=$((next - now))
+    unit=${timer%.timer}
+    [[ $unit =~ ^omarchy-reminder-[0-9]+m-[0-9]+$ ]] || continue
+    minutes=$(parse_unit_minutes "$unit")
+    message=$(message_for "$unit")
+    item=$(jq -cn \
+      --arg unit "$unit" \
+      --arg timer "$timer" \
+      --arg minutes "$minutes" \
+      --arg message "$message" \
+      --arg remaining "$(format_remaining "$remaining")" \
+      --argjson remainingSeconds "$remaining" \
+      --argjson at "$next" \
+      --arg atTime "$(date -d "@$next" +%-H:%M)" \
+      '{unit:$unit,timer:$timer,minutes:$minutes,message:$message,remaining:$remaining,remainingSeconds:$remainingSeconds,at:$at,atTime:$atTime}')
+    items=$(jq -cn --argjson items "$items" --argjson item "$item" '$items + [$item]')
+  done < <(_active_timers "$now")
+  jq -cn --argjson count "$(printf '%s' "$items" | jq 'length')" --argjson reminders "$items" '{count:$count,reminders:$reminders}'
+}
+
+stop_unit() {
+  local unit=$1
+  require_unit "$unit"
+  systemctl --user stop "$unit.timer" 2>/dev/null || true
+  rm -f "$REMINDER_DIR/$unit.message" 2>/dev/null || true
+}
+
+create_unit() {
+  local minutes=$1 message=$2
+  require_minutes "$minutes"
+  local set_at=$(date +%s)
+  local unit="omarchy-reminder-${minutes}m-${set_at}"
+  local fire_at=$(date -d "+${minutes} minutes" +%s)
+  mkdir -p "$REMINDER_DIR"
+  chmod 700 "$REMINDER_DIR" 2>/dev/null || true
+
+  if [[ -n $message ]]; then
+    if ((${#message} > MAX_MESSAGE)); then
+      message="${message:0:$MAX_MESSAGE}"
+    fi
+    umask 077
+    printf "%s" "$message" >"$REMINDER_DIR/$unit.message"
+    chmod 600 "$REMINDER_DIR/$unit.message" 2>/dev/null || true
+  fi
+
+  systemd-run --user --quiet --collect --on-active="${minutes}m" --unit="$unit" \
+    "$_self" fire "$unit" "$fire_at" >/dev/null 2>&1 || true
+
+  printf "%s\n" "$unit"
+}
+
+cmd_set() {
+  local minutes=$1
+  local message="${2:-}"
+  require_minutes "$minutes"
+  create_unit "$minutes" "$message" >/dev/null
+  if [[ -n $message ]]; then
+    echo "ok: '$message' in ${minutes} minutes ($(date -d "+${minutes} minutes" +%-H:%M))"
+  else
+    echo "ok: reminder in ${minutes} minutes ($(date -d "+${minutes} minutes" +%-H:%M))"
+  fi
+  refresh_indicator
+}
+
+cmd_cancel() {
+  local unit=$1
+  stop_unit "$unit"
+  refresh_indicator
+  echo "ok: cancelled $unit"
+}
+
+cmd_snooze() {
+  local unit=$1 minutes=$2
+  require_unit "$unit"
+  require_minutes "$minutes"
+  local message=$(message_for "$unit")
+  stop_unit "$unit"
+  create_unit "$minutes" "$message" >/dev/null
+  refresh_indicator
+  echo "ok: snoozed to ${minutes} minutes ($(date -d "+${minutes} minutes" +%-H:%M))"
+}
+
+cmd_edit() {
+  local unit=$1 minutes=$2 message="${3:-}"
+  require_unit "$unit"
+  require_minutes "$minutes"
+  local old_message=$(message_for "$unit")
+  if [[ -z $message ]]; then
+    message="$old_message"
+  fi
+  stop_unit "$unit"
+  create_unit "$minutes" "$message" >/dev/null
+  refresh_indicator
+  echo "ok: updated to ${minutes} minutes ($(date -d "+${minutes} minutes" +%-H:%M))"
+}
+
+cmd_clear() {
+  local unit
+  while IFS= read -r unit; do
+    [[ -z $unit ]] && continue
+    unit=${unit%.timer}
+    [[ $unit =~ ^omarchy-reminder-[0-9]+m-[0-9]+$ ]] || continue
+    systemctl --user stop "$unit.timer" 2>/dev/null || true
+  done < <(systemctl --user list-timers --all --no-legend --no-pager "omarchy-reminder-*.timer" 2>/dev/null | awk '{ print $(NF - 1) }')
+  rm -f "$REMINDER_DIR"/omarchy-reminder-*.message 2>/dev/null || true
+  refresh_indicator
+  echo "ok: all cleared"
+}
+
+cmd_fire() {
+  local unit=$1 fire_at=$2
+  require_unit "$unit"
+  require_fire_at "$fire_at"
+  local message=$(message_for "$unit")
+  local headline message_body
+  local fired_at=$(date +%-H:%M)
+  local pending=$(format_remaining $((fire_at - $(date +%s))))
+
+  if [[ -n $message ]]; then
+    headline=$(safe_headline "$message")
+  else
+    headline="Time is up"
+  fi
+  message_body="Due $fired_at · ${pending} ago · click to manage"
+
+  rm -f "$REMINDER_DIR/$unit.message" 2>/dev/null || true
+  refresh_indicator
+
+  omarchy-notification-send \
+    -u normal -g "$GLYPH" "$headline" "$message_body" \
+    --exec omarchy-shell -q shell summon "$PLUGIN_ID" '{}'
+}
+
+usage() {
+  echo "Usage: reminderctl list|set|cancel|snooze|edit|clear|fire" >&2
+  exit 1
+}
+
+case "${1:-}" in
+list) cmd_list ;;
+set) cmd_set "${2?missing minutes}" "${3:-}" ;;
+cancel) cmd_cancel "${2?missing unit}" ;;
+snooze) cmd_snooze "${2?missing unit}" "${3?missing minutes}" ;;
+edit) cmd_edit "${2?missing unit}" "${3?missing minutes}" "${4:-}" ;;
+clear) cmd_clear ;;
+fire) cmd_fire "${2?missing unit}" "${3?missing fire_at}" ;;
+*) usage ;;
+esac

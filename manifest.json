@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "due.reminders",
+  "name": "Due",
+  "version": "1.1.0",
+  "author": "Contributors",
+  "license": "MIT",
+  "description": "Create, list, snooze, edit, and delete desktop notification reminders from a bar pill.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "ReminderPill.qml"
+  },
+  "barWidget": {
+    "displayName": "Due",
+    "description": "Bell pill with the active reminder count. Opens a manager to create, cancel, snooze, or edit reminders.",
+    "category": "Info",
+    "aliases": [
+      "reminder",
+      "reminders",
+      "alarm",
+      "due"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
