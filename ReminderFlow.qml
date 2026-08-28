@@ -26,6 +26,7 @@ Panel {
   property string composerMinutes: "15"
   property var runnerQueue: []
   property var runnerOnDone: function() {}
+  property string runnerStdin: ""
   property int nowTs: Math.floor(Date.now() / 1000)
 
   readonly property var presets: ReminderFlowModel.presetMinutes()
@@ -93,8 +94,12 @@ Panel {
     })
   }
 
-  function runReminderctl(args, onDone) {
-    root.runnerQueue = root.runnerQueue.concat([{ args: args, onDone: onDone || function() {} }])
+  function runReminderctl(args, onDone, stdinText) {
+    root.runnerQueue = root.runnerQueue.concat([{
+      args: args,
+      onDone: onDone || function() {},
+      stdin: stdinText == null ? "" : String(stdinText)
+    }])
     root.pumpRunner()
   }
 
@@ -105,7 +110,9 @@ Panel {
     for (var i = 1; i < root.runnerQueue.length; i++) rest.push(root.runnerQueue[i])
     root.runnerQueue = rest
     root.runnerOnDone = job.onDone
+    root.runnerStdin = ReminderFlowModel.capMessage(job.stdin || "")
     runner.command = ["reminderctl"].concat(job.args)
+    runner.stdinEnabled = job.args[0] === "set" || job.args[0] === "edit"
     runner.running = true
   }
 
@@ -129,9 +136,9 @@ Panel {
     if (!ReminderFlowModel.isValidUnit(unit)) return
     var minutes = ReminderFlowModel.minutesFromParts(root.editDays, root.editHours, root.editMinutes)
     if (!minutes) return
-    var message = msgField.text
+    var message = ReminderFlowModel.capMessage(msgField.text)
     root.cancelEdit()
-    root.runReminderctl(["edit", unit, minutes].concat(message ? [message] : []), function() { root.refresh() })
+    root.runReminderctl(["edit", unit, minutes], function() { root.refresh() }, message)
   }
 
   function startEdit(reminder) {
@@ -187,10 +194,10 @@ Panel {
     var minutes = ReminderFlowModel.parseDelay(delayField.text)
     if (!minutes) minutes = ReminderFlowModel.validMinutes(root.composerMinutes)
     if (!minutes) return
-    var message = msgField.text.trim()
+    var message = ReminderFlowModel.capMessage(msgField.text.trim())
     msgField.text = ""
     delayField.text = ""
-    root.runReminderctl(["set", minutes].concat(message ? [message] : []), function() { root.refresh() })
+    root.runReminderctl(["set", minutes], function() { root.refresh() }, message)
   }
 
   function focusComposer() {
@@ -200,9 +207,18 @@ Panel {
 
   Process {
     id: runner
+    stdinEnabled: false
+    onStarted: {
+      if (stdinEnabled) {
+        if (root.runnerStdin.length > 0) write(root.runnerStdin)
+        root.runnerStdin = ""
+        // Close the write end so reminderctl's bounded stdin read sees EOF.
+        stdinEnabled = false
+      }
+    }
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.runnerOnDone(text)
+      onStreamFinished: root.runnerOnDone(ReminderFlowModel.capStdout(text))
     }
     onExited: root.pumpRunner()
   }
@@ -271,6 +287,7 @@ Panel {
             text: root.reminders.length === 0
               ? "No reminders"
               : root.reminders.length + (root.reminders.length === 1 ? " reminder" : " reminders")
+            textFormat: Text.PlainText
             color: root.fg
             font.family: root.fontFamily
             font.pixelSize: Style.font.heading
@@ -312,6 +329,7 @@ Panel {
                   text: modelData.message && String(modelData.message).trim()
                     ? ReminderFlowModel.shortMessage(modelData.message, 72)
                     : ("In " + modelData.minutes + " min")
+                  textFormat: Text.PlainText
                   color: root.fg
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body
@@ -322,6 +340,7 @@ Panel {
                 Text {
                   width: parent.width
                   text: ReminderFlowModel.dueLabel(modelData.at) + " · in " + ReminderFlowModel.remainingLabel(card.remain)
+                  textFormat: Text.PlainText
                   color: root.fg
                   opacity: 0.65
                   font.family: root.fontFamily
@@ -377,6 +396,7 @@ Panel {
 
             Text {
               text: root.editingUnit !== "" ? "Edit reminder" : "New reminder"
+              textFormat: Text.PlainText
               color: root.fg
               opacity: 0.7
               font.family: root.fontFamily

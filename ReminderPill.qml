@@ -95,7 +95,7 @@ BarWidget {
     command: ["reminderctl", "list"]
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.updateFromList(text)
+      onStreamFinished: root.updateFromList(ReminderFlowModel.capStdout(text))
     }
     onExited: function(exitCode) {
       if (exitCode !== 0) { root.reminderCount = 0; root.tooltip = "" }
@@ -112,10 +112,13 @@ BarWidget {
     var lines = []
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i]
-      var label = r.message && r.message.trim() ? ReminderFlowModel.shortMessage(r.message, 48) : (r.minutes + " min")
+      var label = r.message && r.message.trim()
+        ? ReminderFlowModel.shortMessage(r.message, 48)
+        : (r.minutes + " min")
       lines.push(label + " · " + (r.atTime || ""))
     }
-    root.tooltip = lines.join("\n")
+    // Cap retained tooltip text; content is plain (no rich markup).
+    root.tooltip = ReminderFlowModel.capText(lines.join("\n"), 2000)
   }
 
   BarIconButton {

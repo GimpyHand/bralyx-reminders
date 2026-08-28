@@ -47,12 +47,13 @@ Keyboard:
 
 ```sh
 reminderctl list
-reminderctl set 15 "Check the oven"
+printf '%s' "Check the oven" | reminderctl set 15
 reminderctl cancel <unit>
 reminderctl snooze <unit> 10
-reminderctl edit <unit> 20 "new message"
+printf '%s' "new message" | reminderctl edit <unit> 20
 ```
 
+`set` / `edit` take the reminder message from **stdin** (max 500 bytes), never argv, so private text is not exposed in `/proc/<pid>/cmdline`.
 ## Configure
 
 ```sh

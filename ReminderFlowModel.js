@@ -1,3 +1,6 @@
+var MAX_MESSAGE = 500
+var MAX_STDOUT = 65536
+
 function validMinutes(value) {
   var minutes = String(value || "").trim()
   if (!/^[1-9][0-9]{0,6}$/.test(minutes)) return ""
@@ -9,13 +12,24 @@ function isValidUnit(value) {
   return /^omarchy-reminder-[0-9]+m-[0-9]+$/.test(String(value || "").trim())
 }
 
-function reminderArgs(minutes, message) {
+function capText(value, max) {
+  var text = String(value || "")
+  max = max || MAX_MESSAGE
+  return text.length > max ? text.substring(0, max) : text
+}
+
+function capStdout(value) {
+  return capText(value, MAX_STDOUT)
+}
+
+function capMessage(value) {
+  return capText(value, MAX_MESSAGE)
+}
+
+function reminderArgs(minutes) {
   var valid = validMinutes(minutes)
   if (!valid) return []
-  var args = [valid]
-  var text = String(message || "")
-  if (text.length > 0) args.push(text)
-  return args
+  return [valid]
 }
 
 function clampUnit(value) {
@@ -24,12 +38,14 @@ function clampUnit(value) {
 
 function parseList(raw) {
   var data = {}
-  try { data = JSON.parse(raw) } catch (e) { data = {} }
+  try { data = JSON.parse(capStdout(raw)) } catch (e) { data = {} }
   var items = Array.isArray(data.reminders) ? data.reminders : []
   var out = []
   for (var i = 0; i < items.length; i++) {
     var row = items[i]
-    if (row && isValidUnit(row.unit)) out.push(row)
+    if (!row || !isValidUnit(row.unit)) continue
+    if (row.message != null) row.message = capMessage(row.message)
+    out.push(row)
   }
   return out
 }
@@ -39,7 +55,7 @@ function isBlank(value) {
 }
 
 function shortMessage(value, max) {
-  var text = String(value || "").replace(/\s+/g, " ").trim()
+  var text = capMessage(value).replace(/\s+/g, " ").trim()
   max = max || 90
   return text.length > max ? text.substring(0, max - 1) + "…" : text
 }
@@ -174,8 +190,13 @@ function addMinutesToParts(days, hours, minutes, extraMinutes) {
 
 if (typeof module !== "undefined") {
   module.exports = {
+    MAX_MESSAGE: MAX_MESSAGE,
+    MAX_STDOUT: MAX_STDOUT,
     validMinutes: validMinutes,
     isValidUnit: isValidUnit,
+    capText: capText,
+    capStdout: capStdout,
+    capMessage: capMessage,
     reminderArgs: reminderArgs,
     clampUnit: clampUnit,
     parseList: parseList,

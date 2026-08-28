@@ -9,10 +9,10 @@
 #
 # Commands:
 #   reminderctl list                       JSON of active reminders
-#   reminderctl set <minutes> [message]    create a reminder
+#   reminderctl set <minutes>              create; message from stdin (max 500 bytes)
 #   reminderctl cancel <unit>              stop + forget one reminder
 #   reminderctl snooze <unit> <minutes>    re-arm a reminder N minutes from now
-#   reminderctl edit <unit> <minutes> [message]
+#   reminderctl edit <unit> <minutes>      update; message from stdin (empty keeps prior)
 #   reminderctl clear                      stop + forget all reminders
 set -euo pipefail
 
@@ -20,10 +20,10 @@ PLUGIN_ID="bralyx.reminders"
 REMINDER_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/omarchy-reminders"
 GLYPH="󰢌"
 MAX_MINUTES=999999
+MAX_MESSAGE=500
+SELF_UID=$(id -u)
 
 _self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
-
-MAX_MESSAGE=500
 
 require_minutes() {
   local minutes=${1:-}
@@ -71,6 +71,119 @@ format_remaining() {
   fi
 }
 
+# Bound stdin read so private reminder text never needs to live on argv.
+read_message_stdin() {
+  local raw
+  raw=$(dd bs="$MAX_MESSAGE" count=1 status=none 2>/dev/null || true)
+  if ((${#raw} > MAX_MESSAGE)); then
+    raw="${raw:0:MAX_MESSAGE}"
+  fi
+  printf '%s' "$raw"
+}
+
+ensure_reminder_dir() {
+  if [[ -L $REMINDER_DIR ]]; then
+    echo "refusing symlink reminder dir: $REMINDER_DIR" >&2
+    exit 1
+  fi
+  mkdir -p "$REMINDER_DIR"
+  if [[ -L $REMINDER_DIR || ! -d $REMINDER_DIR ]]; then
+    echo "invalid reminder dir: $REMINDER_DIR" >&2
+    exit 1
+  fi
+  local owner mode
+  owner=$(stat -c '%u' "$REMINDER_DIR")
+  mode=$(stat -c '%a' "$REMINDER_DIR")
+  if [[ $owner != "$SELF_UID" ]]; then
+    echo "reminder dir not owned by current user" >&2
+    exit 1
+  fi
+  if [[ $mode != 700 ]]; then
+    chmod 700 "$REMINDER_DIR"
+  fi
+}
+
+# Read a .message file only if it is a regular file we own, not a symlink,
+# and at most MAX_MESSAGE bytes.
+message_for() {
+  local unit=$1
+  require_unit "$unit"
+  local path="$REMINDER_DIR/$unit.message"
+
+  # no-follow: refuse symlinks; type: require regular file; owner: self only
+  if [[ -L $path || ! -e $path || ! -f $path ]]; then
+    return 0
+  fi
+
+  local owner size
+  owner=$(stat -c '%u' "$path")
+  size=$(stat -c '%s' "$path")
+  if [[ $owner != "$SELF_UID" ]]; then
+    return 0
+  fi
+  if ! [[ $size =~ ^[0-9]+$ ]]; then
+    return 0
+  fi
+
+  local data
+  data=$(head -c "$MAX_MESSAGE" "$path" 2>/dev/null || true)
+  if [[ -L $path ]]; then
+    return 0
+  fi
+  if ((${#data} > MAX_MESSAGE)); then
+    data="${data:0:MAX_MESSAGE}"
+  fi
+  printf '%s' "$data"
+}
+
+write_message_file() {
+  local unit=$1 message=$2
+  require_unit "$unit"
+  ensure_reminder_dir
+
+  local path="$REMINDER_DIR/$unit.message"
+  if [[ -L $path ]]; then
+    echo "refusing symlink message path: $path" >&2
+    exit 1
+  fi
+  if [[ -e $path && ! -f $path ]]; then
+    echo "refusing non-regular message path: $path" >&2
+    exit 1
+  fi
+
+  if ((${#message} > MAX_MESSAGE)); then
+    message="${message:0:MAX_MESSAGE}"
+  fi
+
+  local tmp
+  tmp=$(mktemp -p "$REMINDER_DIR" ".msg.XXXXXX")
+  umask 077
+  printf '%s' "$message" >"$tmp"
+  chmod 600 "$tmp"
+
+  if [[ -L $path ]]; then
+    rm -f "$tmp"
+    echo "refusing symlink message path: $path" >&2
+    exit 1
+  fi
+  mv -f "$tmp" "$path"
+}
+
+remove_message_file() {
+  local unit=$1
+  require_unit "$unit"
+  local path="$REMINDER_DIR/$unit.message"
+  if [[ -L $path ]]; then
+    return 0
+  fi
+  if [[ -f $path ]]; then
+    local owner
+    owner=$(stat -c '%u' "$path")
+    [[ $owner == "$SELF_UID" ]] || return 0
+    rm -f "$path"
+  fi
+}
+
 _active_timers() {
   local now=${1:-$(date +%s)}
   local timer next
@@ -80,13 +193,6 @@ _active_timers() {
     ((next <= now)) && continue
     printf "%s\t%s\n" "$timer" "$next"
   done < <(systemctl --user list-timers --all --output=json "omarchy-reminder-*.timer" 2>/dev/null | jq -r '.[] | [.unit, .next] | @tsv')
-}
-
-message_for() {
-  local unit=$1
-  require_unit "$unit"
-  local path="$REMINDER_DIR/$unit.message"
-  [[ -f $path ]] && cat "$path" || true
 }
 
 parse_unit_minutes() {
@@ -130,7 +236,7 @@ stop_unit() {
   local unit=$1
   require_unit "$unit"
   systemctl --user stop "$unit.timer" 2>/dev/null || true
-  rm -f "$REMINDER_DIR/$unit.message" 2>/dev/null || true
+  remove_message_file "$unit"
 }
 
 create_unit() {
@@ -139,16 +245,10 @@ create_unit() {
   local set_at=$(date +%s)
   local unit="omarchy-reminder-${minutes}m-${set_at}"
   local fire_at=$(date -d "+${minutes} minutes" +%s)
-  mkdir -p "$REMINDER_DIR"
-  chmod 700 "$REMINDER_DIR" 2>/dev/null || true
+  ensure_reminder_dir
 
   if [[ -n $message ]]; then
-    if ((${#message} > MAX_MESSAGE)); then
-      message="${message:0:$MAX_MESSAGE}"
-    fi
-    umask 077
-    printf "%s" "$message" >"$REMINDER_DIR/$unit.message"
-    chmod 600 "$REMINDER_DIR/$unit.message" 2>/dev/null || true
+    write_message_file "$unit" "$message"
   fi
 
   systemd-run --user --quiet --collect --on-active="${minutes}m" --unit="$unit" \
@@ -159,14 +259,11 @@ create_unit() {
 
 cmd_set() {
   local minutes=$1
-  local message="${2:-}"
+  local message
   require_minutes "$minutes"
+  message=$(read_message_stdin)
   create_unit "$minutes" "$message" >/dev/null
-  if [[ -n $message ]]; then
-    echo "ok: '$message' in ${minutes} minutes ($(date -d "+${minutes} minutes" +%-H:%M))"
-  else
-    echo "ok: reminder in ${minutes} minutes ($(date -d "+${minutes} minutes" +%-H:%M))"
-  fi
+  echo "ok: reminder in ${minutes} minutes ($(date -d "+${minutes} minutes" +%-H:%M))"
   refresh_indicator
 }
 
@@ -181,7 +278,8 @@ cmd_snooze() {
   local unit=$1 minutes=$2
   require_unit "$unit"
   require_minutes "$minutes"
-  local message=$(message_for "$unit")
+  local message
+  message=$(message_for "$unit")
   stop_unit "$unit"
   create_unit "$minutes" "$message" >/dev/null
   refresh_indicator
@@ -189,12 +287,16 @@ cmd_snooze() {
 }
 
 cmd_edit() {
-  local unit=$1 minutes=$2 message="${3:-}"
+  local unit=$1 minutes=$2
   require_unit "$unit"
   require_minutes "$minutes"
-  local old_message=$(message_for "$unit")
-  if [[ -z $message ]]; then
-    message="$old_message"
+  local message
+  if [[ -t 0 ]]; then
+    # Interactive CLI with no pipe: keep the previous message.
+    message=$(message_for "$unit")
+  else
+    # Piped/QML stdin (including empty) replaces the message.
+    message=$(read_message_stdin)
   fi
   stop_unit "$unit"
   create_unit "$minutes" "$message" >/dev/null
@@ -209,8 +311,8 @@ cmd_clear() {
     unit=${unit%.timer}
     [[ $unit =~ ^omarchy-reminder-[0-9]+m-[0-9]+$ ]] || continue
     systemctl --user stop "$unit.timer" 2>/dev/null || true
+    remove_message_file "$unit"
   done < <(systemctl --user list-timers --all --no-legend --no-pager "omarchy-reminder-*.timer" 2>/dev/null | awk '{ print $(NF - 1) }')
-  rm -f "$REMINDER_DIR"/omarchy-reminder-*.message 2>/dev/null || true
   refresh_indicator
   echo "ok: all cleared"
 }
@@ -219,10 +321,10 @@ cmd_fire() {
   local unit=$1 fire_at=$2
   require_unit "$unit"
   require_fire_at "$fire_at"
-  local message=$(message_for "$unit")
-  local headline message_body
+  local message headline message_body
   local fired_at=$(date +%-H:%M)
   local pending=$(format_remaining $((fire_at - $(date +%s))))
+  message=$(message_for "$unit")
 
   if [[ -n $message ]]; then
     headline=$(safe_headline "$message")
@@ -231,7 +333,7 @@ cmd_fire() {
   fi
   message_body="Due $fired_at · ${pending} ago · click to manage"
 
-  rm -f "$REMINDER_DIR/$unit.message" 2>/dev/null || true
+  remove_message_file "$unit"
   refresh_indicator
 
   omarchy-notification-send \
@@ -241,15 +343,16 @@ cmd_fire() {
 
 usage() {
   echo "Usage: reminderctl list|set|cancel|snooze|edit|clear|fire" >&2
+  echo "  set/edit read the reminder message from stdin (max ${MAX_MESSAGE} bytes), never argv." >&2
   exit 1
 }
 
 case "${1:-}" in
 list) cmd_list ;;
-set) cmd_set "${2?missing minutes}" "${3:-}" ;;
+set) cmd_set "${2?missing minutes}" ;;
 cancel) cmd_cancel "${2?missing unit}" ;;
 snooze) cmd_snooze "${2?missing unit}" "${3?missing minutes}" ;;
-edit) cmd_edit "${2?missing unit}" "${3?missing minutes}" "${4:-}" ;;
+edit) cmd_edit "${2?missing unit}" "${3?missing minutes}" ;;
 clear) cmd_clear ;;
 fire) cmd_fire "${2?missing unit}" "${3?missing fire_at}" ;;
 *) usage ;;
