@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "bralyx.reminders",
   "name": "Bralyx Reminders",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "author": "Bralyx",
   "license": "MIT",
   "description": "Reminders in your Omarchy bar — set a time, get a desktop notification, then snooze, edit, or delete from the pill. Fully local (systemd user timers), no account and no network.",
