@@ -1,8 +1,8 @@
-# Due
+# Bralyx Reminders
 
-A bar pill and popup for the [Omarchy](https://omarchy.org) Quattro shell. Create, list, snooze, edit, and delete desktop notification reminders. State lives in systemd user timers (no daemon, no network).
+Reminders in your Omarchy bar — set a time, get a desktop notification, then snooze, edit, or delete from the pill. Fully local (systemd user timers), no account and no network.
 
-Plugin id: `bralyx.reminders`. Disable the built-in `omarchy.reminders` overlay while this is enabled so you do not get two reminder UIs:
+A bar pill and popup for the [Omarchy](https://omarchy.org) Quattro shell. Plugin id: `bralyx.reminders`. Disable the built-in `omarchy.reminders` overlay while this is enabled so you do not get two reminder UIs:
 
 ```sh
 omarchy plugin disable omarchy.reminders
