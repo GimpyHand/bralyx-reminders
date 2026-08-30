@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "id": "bralyx.reminders",
-  "name": "Due",
-  "version": "1.1.3",
+  "name": "Bralyx Reminders",
+  "version": "1.1.4",
   "author": "Bralyx",
   "license": "MIT",
-  "description": "Create, list, snooze, edit, and delete desktop notification reminders from a bar pill.",
+  "description": "Reminders in your Omarchy bar — set a time, get a desktop notification, then snooze, edit, or delete from the pill. Fully local (systemd user timers), no account and no network.",
   "kinds": [
     "bar-widget"
   ],
@@ -13,14 +13,15 @@
     "barWidget": "ReminderPill.qml"
   },
   "barWidget": {
-    "displayName": "Due",
-    "description": "Bell pill with the active reminder count. Opens a manager to create, cancel, snooze, or edit reminders.",
+    "displayName": "Bralyx Reminders",
+    "description": "Bar bell with active count. Open the panel to create, snooze, edit, or delete local desktop reminders.",
     "category": "Productivity",
     "aliases": [
       "reminder",
       "reminders",
       "alarm",
-      "bralyx"
+      "bralyx",
+      "due"
     ],
     "allowMultiple": false,
     "defaultSection": "right"
